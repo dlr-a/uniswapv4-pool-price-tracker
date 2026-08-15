@@ -1,3 +1,6 @@
+mod calc;
+
+use crate::calc::calculate_prices;
 use alloy::primitives::address;
 use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use alloy::rpc::types::{BlockNumberOrTag, Filter};
@@ -5,93 +8,8 @@ use alloy_primitives::FixedBytes;
 use alloy_sol_types::sol;
 use eyre::Result;
 use futures_util::stream::StreamExt;
-use num_bigint::BigInt;
-use num_rational::Ratio;
-use num_traits::One;
-use num_traits::Zero;
 use std::env;
 use uniswap_sdk_core::prelude::*;
-
-fn format_price_readable(value: &BigInt, scale: u32, symbol: &str) -> String {
-    let scale_factor = BigInt::from(10u64.pow(scale));
-    let int_part = value / &scale_factor;
-    let frac_part = value % &scale_factor;
-
-    let mut int_str = int_part.to_string();
-
-    let mut with_commas = String::new();
-    let chars: Vec<char> = int_str.chars().collect();
-    for (i, c) in chars.iter().rev().enumerate() {
-        if i != 0 && i % 3 == 0 {
-            with_commas.push(',');
-        }
-        with_commas.push(*c);
-    }
-    int_str = with_commas.chars().rev().collect();
-
-    let mut frac_str = frac_part.to_string();
-    let missing_zeros = scale as usize - frac_str.len();
-    if missing_zeros > 0 {
-        frac_str = "0".repeat(missing_zeros) + &frac_str;
-    }
-
-    let frac_trimmed = &frac_str;
-
-    if int_part.is_zero() {
-        return format!("0.{} {}", frac_trimmed.trim_end_matches('0'), symbol);
-    }
-
-    if frac_trimmed.is_empty() {
-        format!("{} {}", int_str, symbol)
-    } else {
-        format!(
-            "{}.{} {}",
-            int_str,
-            frac_trimmed.trim_end_matches('0'),
-            symbol
-        )
-    }
-}
-
-fn calculate_prices(
-    sqrt_price_x96_str: String,
-    decimal_token0: u32,
-    decimal_token1: u32,
-    token0_symbol: &String,
-    token1_symbol: &String,
-) -> (BigInt, BigInt) {
-    let sqrt_price_x96 = BigInt::parse_bytes(sqrt_price_x96_str.as_bytes(), 10).unwrap();
-    let two_pow_96: BigInt = BigInt::one() << 96;
-
-    // (sqrtPriceX96 / 2^96)^2
-    let price_ratio = Ratio::new(sqrt_price_x96.clone(), two_pow_96.clone()).pow(2);
-
-    // decimal factor = 10^(dec1 - dec0)
-    let decimal_factor = Ratio::new(
-        BigInt::from(10u64.pow(decimal_token1)),
-        BigInt::from(10u64.pow(decimal_token0)),
-    );
-
-    let buy_one_token0_ratio: Ratio<BigInt> = price_ratio / decimal_factor;
-    let buy_one_token1_ratio: Ratio<BigInt> = Ratio::one() / &buy_one_token0_ratio;
-
-    // scale = 10^18
-    let scale = BigInt::from(10u64.pow(18));
-
-    let buy_one_token0 = (buy_one_token0_ratio.clone() * &scale).to_integer();
-    let buy_one_token1 = (buy_one_token1_ratio.clone() * &scale).to_integer();
-
-    println!(
-        "Price token0→token1: {}",
-        format_price_readable(&buy_one_token0, 18, token1_symbol)
-    );
-    println!(
-        "Price token1→token0: {}",
-        format_price_readable(&buy_one_token1, 18, token0_symbol)
-    );
-
-    (buy_one_token0, buy_one_token1)
-}
 
 sol! {
     #[sol(rpc)]
