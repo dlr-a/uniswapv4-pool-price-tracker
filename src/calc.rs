@@ -10,6 +10,9 @@ use tracing::info;
 pub enum FormatError {
     #[error("Failed to format price")]
     FormatPriceFailed,
+
+    #[error("Failed to parse sqrt price")]
+    SqrtPriceParseFailed,
 }
 
 pub fn calculate_prices(
@@ -19,7 +22,13 @@ pub fn calculate_prices(
     token0_symbol: &String,
     token1_symbol: &String,
 ) -> Result<(BigInt, BigInt), FormatError> {
-    let sqrt_price_x96 = BigInt::parse_bytes(sqrt_price_x96_str.as_bytes(), 10).unwrap();
+    let sqrt_price_x96 = match BigInt::parse_bytes(sqrt_price_x96_str.as_bytes(), 10) {
+        Some(v) => v,
+        None => {
+            tracing::error!("Failed to parse sqrt price: {}", sqrt_price_x96_str);
+            return Err(FormatError::SqrtPriceParseFailed);
+        }
+    };
     let two_pow_96: BigInt = BigInt::one() << 96;
 
     // (sqrtPriceX96 / 2^96)^2
@@ -49,7 +58,7 @@ pub fn calculate_prices(
         Ok(v) => v,
         Err(e) => {
             tracing::error!("Failed to format token0 price: {}", e);
-            return Err(FormatError::FormatPriceFailed.into());
+            return Err(FormatError::FormatPriceFailed);
         }
     };
 
@@ -57,7 +66,7 @@ pub fn calculate_prices(
         Ok(v) => v,
         Err(e) => {
             tracing::error!("Failed to format token0 price: {}", e);
-            return Err(FormatError::FormatPriceFailed.into());
+            return Err(FormatError::FormatPriceFailed);
         }
     };
 
